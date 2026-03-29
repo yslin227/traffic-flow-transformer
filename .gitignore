@@ -1,0 +1,30 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Model checkpoints
+checkpoints/
+*.pt
+*.pth
+
+# Large raw data
+data/*.h5
+data/*.pkl
+data/*.csv
+data/*.txt
+
+# Optional logs
+results/*.log

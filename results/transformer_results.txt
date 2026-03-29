@@ -1,0 +1,4 @@
+Test MAE: 7.3010
+Test RMSE: 16.2963
+Test MAPE: 15.0830
+
