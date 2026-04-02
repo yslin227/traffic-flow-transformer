@@ -4,7 +4,7 @@ Responsibilities: Define the Spatial-Temporal Transformer with
 decoupled attention heads, graph bias, and learnable positional encoding.
 
 Run (smoke test, no data needed):
-    python part2_model.py
+    python STTmodel.py
 """
 
 import math
