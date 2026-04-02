@@ -16,7 +16,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from part2_model import STTransformer
+from STTmodel import STTransformer
 
 
 # Dataset 
