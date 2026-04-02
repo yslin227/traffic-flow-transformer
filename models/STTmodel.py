@@ -35,7 +35,7 @@ class LearnablePE(nn.Module):
         return self.dropout(x + self.pe(torch.arange(x.size(1), device=x.device)))
 
 
-# ── Graph-aware spatial bias ──────────────────────────────────────────────────
+# Graph-aware spatial bias
 class GraphBias(nn.Module):
     """Learnable [N, N] additive bias on spatial attention logits."""
     def __init__(self, num_sensors: int, adj: Optional[torch.Tensor] = None):
