@@ -1,12 +1,11 @@
 """
-Training Loop
-========================
+Training Loop:
 PyTorch training pipeline with data loading,
 validation, early stopping, checkpointing, and LR scheduling.
 
 Run:
-    python part3_train.py --dataset METR-LA
-    python part3_train.py --dataset PEMS-BAY --epochs 150 --lr 5e-4
+    python STTransformer.py --dataset METR-LA
+    python STTransformer.py --dataset PEMS-BAY --epochs 150 --lr 5e-4
 """
 
 import argparse
@@ -14,9 +13,10 @@ import pickle
 import numpy as np
 import torch
 import torch.nn as nn
+import os
 from torch.utils.data import Dataset, DataLoader
 
-from STTmodel import STTransformer
+from part2_model import STTransformer
 
 
 # Dataset 
@@ -97,7 +97,20 @@ def train(cfg: dict):
     )
     stopper   = EarlyStopping(patience=cfg["patience"])
 
-    for epoch in range(1, cfg["epochs"] + 1):
+    # Existing checkpoint
+    start_epoch = 1 
+    ckpt = "/content/drive/MyDrive/612 Project/best_metr_la.pt" # CHANGE THIS PATH TO YOUR CHECKPOINT
+    if os.path.exists(ckpt): 
+        print(f"\n Resuming training from checkpoint: {ckpt}") 
+        checkpoint = torch.load(ckpt, map_location=device) 
+        model.load_state_dict(checkpoint["model"]) 
+        start_epoch = checkpoint["epoch"] + 1 
+        best_val_loss = checkpoint["val_loss"] 
+        print(f"\nResumed from epoch {checkpoint['epoch']} " f"(val_loss={best_val_loss:.4f})")
+    
+
+    
+    for epoch in range(start_epoch, cfg["epochs"] + 1):
 
         # Train
         model.train()
@@ -136,7 +149,6 @@ def train(cfg: dict):
             break
 
     print(f"\n  Checkpoint saved → {ckpt}")
-    print(f"  Next step: python part4_eval.py --dataset {cfg['dataset']}")
 
 
 # CLI
