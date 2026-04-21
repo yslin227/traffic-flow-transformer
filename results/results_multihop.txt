@@ -1,0 +1,16 @@
+Best Epoch: 74 
+ 
+Best Val Loss: 0.2217 
+ 
+Test MAE: 3.9551 
+ 
+Test RMSE: 9.4106 
+ 
+Test MAPE: 9.93% 
+ 
+Model: ST-Transformer Multi-Hop (3-hop adjacency) 
+ 
+Per-Horizon MAE: 
+  15 min: 3.2803 
+  30 min: 3.9709 
+  60 min: 4.9250 
