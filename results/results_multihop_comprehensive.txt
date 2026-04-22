@@ -54,7 +54,7 @@ MAE:            3.9551
 RMSE:           9.4106
 MAPE (>0.1):    9.93%  (excludes near-zero values)
 WMAPE:          6.85%  (recommended for low-speed data)
-R2 Score:       0.5250
+R2 Score:       0.7235
 Median AE:      1.3251
 Max AE:         81.2063
 
