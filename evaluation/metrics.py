@@ -309,14 +309,19 @@ def format_results(results):
         lines.append("-" * 80)
         lines.append("PER-HORIZON PERFORMANCE BREAKDOWN")
         lines.append("-" * 80)
-        lines.append(f"{'Horizon':>8} {'Minutes':>8} {'MAE':>10} {'RMSE':>10} {'WMAPE':>10} {'R²':>10}")
-        lines.append("-" * 80)
+        lines.append(
+            f"{'Horizon':>8} {'Minutes':>8} {'MAE':>10} {'RMSE':>10} "
+            f"{'MAPE':>10} {'MAPE>0.1':>10} {'WMAPE':>10} {'R²':>10}"
+        )
+        lines.append("-" * 100)
         for h in results["horizon_metrics"]:
             lines.append(
                 f"{h['horizon_step']:>8} "
                 f"{h['horizon_minutes']:>8} "
                 f"{h['mae']:>10.4f} "
                 f"{h['rmse']:>10.4f} "
+                f"{h['mape']:>9.2f}% "
+                f"{h['mape_masked']:>9.2f}% "
                 f"{h['wmape']:>9.2f}% "
                 f"{h['r2']:>10.4f}"
             )

@@ -1,5 +1,5 @@
-Best Epoch: 15
-Best Val Loss: 5.3220
-Test MAE: 6.6725
-Test RMSE: 15.3574
-Test MAPE: 13.0514
+Best Epoch: 24
+Best Val Loss: 5.3765
+Test MAE: 6.3564
+Test RMSE: 14.7495
+Test MAPE: 12.0300
