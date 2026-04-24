@@ -5,45 +5,36 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# ======================
-# Path Setup
-# ======================
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(CURRENT_DIR)
 sys.path.append(PROJECT_ROOT)
 
-# ======================
-# File Paths
-# ======================
-LSTM_FILE = os.path.join(PROJECT_ROOT, "results", "lstm_results_comprehensive.txt")
 TRANSFORMER_FILE = os.path.join(
     PROJECT_ROOT, "results", "transformer_results_comprehensive.txt"
 )
 ST_FILE = os.path.join(PROJECT_ROOT, "results", "results_metr_la_comprehensive.txt")
+MULTIHOP_FILE = os.path.join(
+    PROJECT_ROOT, "results", "results_multihop_comprehensive.txt"
+)
 
-# ======================
-# Page Config
-# ======================
 st.set_page_config(
     page_title="Traffic Forecast Demo",
     page_icon="📈",
     layout="wide",
 )
 
-# ======================
-# Session State
-# ======================
 if "selected_model" not in st.session_state:
     st.session_state.selected_model = None
+
+if "active_section" not in st.session_state:
+    st.session_state.active_section = "Model Description"
 
 
 def select_model(model_name: str):
     st.session_state.selected_model = model_name
+    st.session_state.active_section = "Model Description"
 
 
-# ======================
-# Helpers
-# ======================
 def safe_float(value: str):
     try:
         match = re.search(r"-?\d+(\.\d+)?", value)
@@ -71,13 +62,15 @@ def parse_metrics(file_path: str):
 
             if line.startswith("Model:"):
                 metrics["Model"] = line.split(":", 1)[1].strip()
+            elif line.startswith("Model Type:"):
+                metrics["Model"] = line.split(":", 1)[1].strip()
             elif line.startswith("MAE:"):
                 metrics["MAE"] = safe_float(line.split(":", 1)[1])
             elif line.startswith("RMSE:"):
                 metrics["RMSE"] = safe_float(line.split(":", 1)[1])
             elif line.startswith("WMAPE:"):
                 metrics["WMAPE (%)"] = safe_float(line.split(":", 1)[1])
-            elif line.startswith("R² Score:"):
+            elif line.startswith("R² Score:") or line.startswith("R2 Score:"):
                 metrics["R²"] = safe_float(line.split(":", 1)[1])
             elif "Best Validation Loss" in line:
                 metrics["Best Validation Loss"] = safe_float(line.split(":", 1)[1])
@@ -134,57 +127,59 @@ def parse_horizon_metrics(file_path: str):
 
 
 def load_comparison_table():
-    lstm_metrics = parse_metrics(LSTM_FILE)
     transformer_metrics = parse_metrics(TRANSFORMER_FILE)
     st_metrics = parse_metrics(ST_FILE)
+    multihop_metrics = parse_metrics(MULTIHOP_FILE)
 
     return pd.DataFrame(
         {
-            "Model": ["LSTM", "Transformer", "ST-Transformer"],
-            "Type": ["Benchmark", "Improved Benchmark", "Advanced"],
+            "Model": ["Transformer", "ST-Transformer", "ST-Transformer Multi-Hop"],
+            "Type": ["Benchmark", "Advanced", "Advanced+"],
             "MAE": [
-                lstm_metrics["MAE"],
                 transformer_metrics["MAE"],
                 st_metrics["MAE"],
+                multihop_metrics["MAE"],
             ],
             "RMSE": [
-                lstm_metrics["RMSE"],
                 transformer_metrics["RMSE"],
                 st_metrics["RMSE"],
+                multihop_metrics["RMSE"],
             ],
             "WMAPE (%)": [
-                lstm_metrics["WMAPE (%)"],
                 transformer_metrics["WMAPE (%)"],
                 st_metrics["WMAPE (%)"],
+                multihop_metrics["WMAPE (%)"],
             ],
             "R²": [
-                lstm_metrics["R²"],
                 transformer_metrics["R²"],
                 st_metrics["R²"],
+                multihop_metrics["R²"],
             ],
             "Best Validation Loss": [
-                lstm_metrics["Best Validation Loss"],
                 transformer_metrics["Best Validation Loss"],
                 st_metrics["Best Validation Loss"],
+                multihop_metrics["Best Validation Loss"],
             ],
         }
     )
 
 
-def render_section_selector(model_key: str):
-    return st.radio(
+def render_section_selector():
+    options = ["Model Description", "Workflow", "Result Visualization"]
+
+    section = st.radio(
         "Section",
-        ["Model Description", "Workflow", "Result Visualization"],
+        options,
         horizontal=True,
-        index=0,
-        key=f"section_{model_key}",
+        index=options.index(st.session_state.active_section),
         label_visibility="collapsed",
+        key="section_radio",
     )
 
+    st.session_state.active_section = section
+    return section
 
-# ======================
-# Shared UI Components
-# ======================
+
 def render_metric_table(title: str, metrics: dict):
     st.subheader(title)
 
@@ -262,75 +257,6 @@ def render_result_plots(model_name: str, horizon_df: pd.DataFrame):
         st.pyplot(fig_r2)
 
 
-# ======================
-# LSTM Components
-# ======================
-def render_lstm_workflow():
-    st.subheader("Workflow")
-    st.markdown(
-        """
-        **LSTM pipeline**
-
-        1. Load METR-LA traffic data  
-        2. Build time features (`time_of_day`, `day_of_week`)  
-        3. Create sliding windows (12 input steps → 12 prediction steps)  
-        4. Normalize input sequences  
-        5. Feed sequences into LSTM  
-        6. Predict future traffic values for all sensors  
-        7. Evaluate with MAE / RMSE / WMAPE / R²
-        """
-    )
-
-    st.graphviz_chart(
-        """
-        digraph {
-            rankdir=LR;
-            node [shape=box, style="rounded,filled", fillcolor="#EAF2F8", color="#5D6D7E"];
-            A [label="METR-LA Data"];
-            B [label="Time Features"];
-            C [label="Sliding Window\\n12 -> 12"];
-            D [label="Normalization"];
-            E [label="LSTM Model"];
-            F [label="Prediction"];
-            G [label="Evaluation"];
-
-            A -> B -> C -> D -> E -> F -> G;
-        }
-        """
-    )
-
-
-def render_lstm_page():
-    metrics = parse_metrics(LSTM_FILE)
-    horizon_df = parse_horizon_metrics(LSTM_FILE)
-
-    st.title("LSTM Results")
-    section = render_section_selector("LSTM")
-
-    if section == "Model Description":
-        st.markdown("### Model Description")
-        st.markdown(
-            """
-            LSTM is used here as the **benchmark baseline** for traffic forecasting.
-            It processes input sequences step by step through recurrent hidden states,
-            which makes it effective for capturing short-term temporal dependencies.
-            However, it mainly focuses on **temporal patterns** and does not explicitly
-            model **spatial relationships** between traffic sensors.
-            """
-        )
-        st.write("")
-        render_metric_table("LSTM Result Summary", metrics)
-
-    elif section == "Workflow":
-        render_lstm_workflow()
-
-    elif section == "Result Visualization":
-        render_result_plots("LSTM", horizon_df)
-
-
-# ======================
-# Transformer Components
-# ======================
 def render_transformer_workflow():
     st.subheader("Workflow")
     st.markdown(
@@ -375,18 +301,17 @@ def render_transformer_page():
     horizon_df = parse_horizon_metrics(TRANSFORMER_FILE)
 
     st.title("Transformer Results")
-    section = render_section_selector("Transformer")
+    section = render_section_selector()
 
     if section == "Model Description":
         st.markdown("### Model Description")
         st.markdown(
             """
-            Transformer is used here as an **improved benchmark** over LSTM.
-            Instead of processing sequences step by step, it uses **self-attention**
-            to model the relationships across the entire input sequence at once.
-            This makes it more effective for capturing **long-range temporal dependencies**.
-            However, it still mainly focuses on **temporal modeling** and does not explicitly
-            incorporate the spatial relationships between traffic sensors.
+            Transformer is used here as the **benchmark model**.
+            It uses **self-attention** to model relationships across the full input sequence.
+            Compared with recurrent models, this allows it to better capture longer-range
+            temporal dependencies. However, this model mainly focuses on temporal modeling
+            and does not explicitly use graph-based spatial relationships between sensors.
             """
         )
         st.write("")
@@ -399,9 +324,6 @@ def render_transformer_page():
         render_result_plots("Transformer", horizon_df)
 
 
-# ======================
-# ST-Transformer Components
-# ======================
 def render_st_workflow():
     st.subheader("Workflow")
     st.markdown(
@@ -448,22 +370,20 @@ def render_st_page():
     horizon_df = parse_horizon_metrics(ST_FILE)
 
     st.title("ST-Transformer Results")
-    section = render_section_selector("ST-Transformer")
+    section = render_section_selector()
 
     if section == "Model Description":
         st.markdown("### Model Description")
         st.markdown(
             """
-            ST-Transformer is the **advanced model** in this demo.
-            It is specifically designed for **traffic forecasting**, which is fundamentally
-            a **spatio-temporal problem**. Unlike LSTM and the standard Transformer,
-            ST-Transformer models both:
+            ST-Transformer is an **advanced spatio-temporal model** for traffic forecasting.
+            Unlike the standard Transformer, it models both:
 
             - **Temporal dependencies** across time
-            - **Spatial dependencies** across traffic sensors
+            - **Spatial dependencies** across sensors
 
-            This allows it to better capture complex traffic dynamics and generally
-            achieve the strongest performance among the three models.
+            This makes it more suitable for traffic forecasting, where nearby sensors and
+            road-network relationships strongly influence future traffic states.
             """
         )
         st.write("")
@@ -476,9 +396,88 @@ def render_st_page():
         render_result_plots("ST-Transformer", horizon_df)
 
 
-# ======================
-# Final Comparison Page
-# ======================
+def render_multihop_workflow():
+    st.subheader("Workflow")
+    st.markdown(
+        """
+        **ST-Transformer Multi-Hop pipeline**
+
+        1. Load METR-LA traffic data  
+        2. Build temporal features  
+        3. Create sliding windows (12 input steps → 12 prediction steps)  
+        4. Construct multi-hop graph bias using A, A², and A³  
+        5. Apply temporal attention  
+        6. Apply spatial attention with multi-hop graph structure  
+        7. Fuse spatial-temporal representations  
+        8. Generate multi-step traffic predictions  
+        9. Evaluate with MAE / RMSE / WMAPE / R²
+        """
+    )
+
+    st.graphviz_chart(
+        """
+        digraph {
+            rankdir=LR;
+            node [shape=box, style="rounded,filled", fillcolor="#FDEDEC", color="#922B21"];
+            A [label="METR-LA Data"];
+            B [label="Time Features"];
+            C [label="Sliding Window\\n12 -> 12"];
+            D [label="Multi-Hop Graph\\nA, A², A³"];
+            E [label="Temporal Attention"];
+            F [label="Spatial Attention"];
+            G [label="ST Fusion"];
+            H [label="Prediction"];
+            I [label="Evaluation"];
+
+            A -> B -> C -> D;
+            C -> E;
+            D -> F;
+            E -> G;
+            F -> G;
+            G -> H -> I;
+        }
+        """
+    )
+
+
+def render_multihop_page():
+    metrics = parse_metrics(MULTIHOP_FILE)
+    horizon_df = parse_horizon_metrics(MULTIHOP_FILE)
+
+    st.title("ST-Transformer Multi-Hop Results")
+    section = render_section_selector()
+
+    if section == "Model Description":
+        st.markdown("### Model Description")
+        st.markdown(
+            """
+            ST-Transformer Multi-Hop extends the original ST-Transformer by using
+            **multi-hop graph bias** in spatial attention.
+
+            Instead of only considering direct 1-hop neighbors, the model incorporates:
+
+            - **1-hop adjacency**: A
+            - **2-hop adjacency**: A²
+            - **3-hop adjacency**: A³
+
+            These graph relationships are combined with learnable weights:
+
+            **w1·A + w2·A² + w3·A³**
+
+            This allows the model to capture longer-range spatial traffic interactions
+            and improves forecasting performance across multiple prediction horizons.
+            """
+        )
+        st.write("")
+        render_metric_table("Multi-Hop Result Summary", metrics)
+
+    elif section == "Workflow":
+        render_multihop_workflow()
+
+    elif section == "Result Visualization":
+        render_result_plots("ST-Transformer Multi-Hop", horizon_df)
+
+
 def render_comparison_summary():
     df = load_comparison_table()
 
@@ -491,122 +490,53 @@ def render_comparison_summary():
     st.table(display_df.set_index("Model"))
 
 
+def plot_metric_line(ax, metric_name, y_label, title):
+    data_sources = [
+        ("Transformer", parse_horizon_metrics(TRANSFORMER_FILE), "-", "o"),
+        ("ST-Transformer", parse_horizon_metrics(ST_FILE), "--", "s"),
+        ("Multi-Hop", parse_horizon_metrics(MULTIHOP_FILE), ":", "^"),
+    ]
+
+    for label, df, linestyle, marker in data_sources:
+        if not df.empty:
+            ax.plot(
+                df["Minutes"],
+                df[metric_name],
+                linestyle=linestyle,
+                marker=marker,
+                label=label,
+            )
+
+    ax.set_xlabel("Prediction Horizon (Minutes)")
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    ax.legend()
+    ax.grid(True)
+
+
 def render_horizon_comparison():
-    st.subheader("Per-Horizon Comparison")
-
-    lstm_df = parse_horizon_metrics(LSTM_FILE)
-    transformer_df = parse_horizon_metrics(TRANSFORMER_FILE)
-    st_df = parse_horizon_metrics(ST_FILE)
-
-    line_styles = {
-        "LSTM": "-",
-        "Transformer": "--",
-        "ST-Transformer": ":",
-    }
-    markers = {
-        "LSTM": "o",
-        "Transformer": "s",
-        "ST-Transformer": "^",
-    }
-
     col1, col2 = st.columns(2)
 
     with col1:
         fig_mae, ax_mae = plt.subplots(figsize=(6, 4))
-        if not lstm_df.empty:
-            ax_mae.plot(
-                lstm_df["Minutes"], lstm_df["MAE"],
-                linestyle=line_styles["LSTM"], marker=markers["LSTM"], label="LSTM"
-            )
-        if not transformer_df.empty:
-            ax_mae.plot(
-                transformer_df["Minutes"], transformer_df["MAE"],
-                linestyle=line_styles["Transformer"], marker=markers["Transformer"], label="Transformer"
-            )
-        if not st_df.empty:
-            ax_mae.plot(
-                st_df["Minutes"], st_df["MAE"],
-                linestyle=line_styles["ST-Transformer"], marker=markers["ST-Transformer"], label="ST-Transformer"
-            )
-        ax_mae.set_xlabel("Prediction Horizon (Minutes)")
-        ax_mae.set_ylabel("MAE")
-        ax_mae.set_title("MAE across Horizon")
-        ax_mae.legend()
-        ax_mae.grid(True)
+        plot_metric_line(ax_mae, "MAE", "MAE", "MAE across Horizon")
         st.pyplot(fig_mae)
 
     with col2:
         fig_rmse, ax_rmse = plt.subplots(figsize=(6, 4))
-        if not lstm_df.empty:
-            ax_rmse.plot(
-                lstm_df["Minutes"], lstm_df["RMSE"],
-                linestyle=line_styles["LSTM"], marker=markers["LSTM"], label="LSTM"
-            )
-        if not transformer_df.empty:
-            ax_rmse.plot(
-                transformer_df["Minutes"], transformer_df["RMSE"],
-                linestyle=line_styles["Transformer"], marker=markers["Transformer"], label="Transformer"
-            )
-        if not st_df.empty:
-            ax_rmse.plot(
-                st_df["Minutes"], st_df["RMSE"],
-                linestyle=line_styles["ST-Transformer"], marker=markers["ST-Transformer"], label="ST-Transformer"
-            )
-        ax_rmse.set_xlabel("Prediction Horizon (Minutes)")
-        ax_rmse.set_ylabel("RMSE")
-        ax_rmse.set_title("RMSE across Horizon")
-        ax_rmse.legend()
-        ax_rmse.grid(True)
+        plot_metric_line(ax_rmse, "RMSE", "RMSE", "RMSE across Horizon")
         st.pyplot(fig_rmse)
 
     col3, col4 = st.columns(2)
 
     with col3:
         fig_wmape, ax_wmape = plt.subplots(figsize=(6, 4))
-        if not lstm_df.empty:
-            ax_wmape.plot(
-                lstm_df["Minutes"], lstm_df["WMAPE"],
-                linestyle=line_styles["LSTM"], marker=markers["LSTM"], label="LSTM"
-            )
-        if not transformer_df.empty:
-            ax_wmape.plot(
-                transformer_df["Minutes"], transformer_df["WMAPE"],
-                linestyle=line_styles["Transformer"], marker=markers["Transformer"], label="Transformer"
-            )
-        if not st_df.empty:
-            ax_wmape.plot(
-                st_df["Minutes"], st_df["WMAPE"],
-                linestyle=line_styles["ST-Transformer"], marker=markers["ST-Transformer"], label="ST-Transformer"
-            )
-        ax_wmape.set_xlabel("Prediction Horizon (Minutes)")
-        ax_wmape.set_ylabel("WMAPE (%)")
-        ax_wmape.set_title("WMAPE across Horizon")
-        ax_wmape.legend()
-        ax_wmape.grid(True)
+        plot_metric_line(ax_wmape, "WMAPE", "WMAPE (%)", "WMAPE across Horizon")
         st.pyplot(fig_wmape)
 
     with col4:
         fig_r2, ax_r2 = plt.subplots(figsize=(6, 4))
-        if not lstm_df.empty:
-            ax_r2.plot(
-                lstm_df["Minutes"], lstm_df["R2"],
-                linestyle=line_styles["LSTM"], marker=markers["LSTM"], label="LSTM"
-            )
-        if not transformer_df.empty:
-            ax_r2.plot(
-                transformer_df["Minutes"], transformer_df["R2"],
-                linestyle=line_styles["Transformer"], marker=markers["Transformer"], label="Transformer"
-            )
-        if not st_df.empty:
-            ax_r2.plot(
-                st_df["Minutes"], st_df["R2"],
-                linestyle=line_styles["ST-Transformer"], marker=markers["ST-Transformer"], label="ST-Transformer"
-            )
-        ax_r2.set_xlabel("Prediction Horizon (Minutes)")
-        ax_r2.set_ylabel("R²")
-        ax_r2.set_title("R² across Horizon")
-        ax_r2.legend()
-        ax_r2.grid(True)
+        plot_metric_line(ax_r2, "R2", "R²", "R² across Horizon")
         st.pyplot(fig_r2)
 
 
@@ -622,26 +552,20 @@ def render_comparison_page():
     render_horizon_comparison()
 
 
-# ======================
-# Layout
-# ======================
 left_col, right_col = st.columns([1, 3])
 
-# ======================
-# Left Panel
-# ======================
 with left_col:
     st.markdown("## Traffic Forecast Demo")
     st.info("Model Selection")
 
-    if st.button("LSTM (Benchmark)", use_container_width=True):
-        select_model("LSTM")
-
-    if st.button("Transformer (Improved Benchmark)", use_container_width=True):
+    if st.button("Transformer (Benchmark)", use_container_width=True):
         select_model("Transformer")
 
     if st.button("ST-Transformer (Advanced)", use_container_width=True):
         select_model("ST-Transformer")
+
+    if st.button("ST-Transformer Multi-Hop", use_container_width=True):
+        select_model("Multi-Hop")
 
     st.divider()
 
@@ -658,21 +582,18 @@ with left_col:
     else:
         st.warning("No selection")
 
-# ======================
-# Right Panel
-# ======================
 with right_col:
     if st.session_state.selected_model is None:
         st.markdown("## Select an option from the left panel")
-
-    elif st.session_state.selected_model == "LSTM":
-        render_lstm_page()
 
     elif st.session_state.selected_model == "Transformer":
         render_transformer_page()
 
     elif st.session_state.selected_model == "ST-Transformer":
         render_st_page()
+
+    elif st.session_state.selected_model == "Multi-Hop":
+        render_multihop_page()
 
     elif st.session_state.selected_model == "Comparison":
         render_comparison_page()
