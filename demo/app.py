@@ -22,6 +22,7 @@ PAPER_RESULTS = {
     "MAE": 3.37,
     "RMSE": 7.14,
     "MAPE (%)": 9.62,
+    "R²": None,
     "Horizon": pd.DataFrame({
         "Minutes": [15, 30, 60],
         "MAE": [2.73, 3.03, 3.37],
@@ -45,6 +46,7 @@ def parse_metrics(file_path: str):
         "MAE": None,
         "RMSE": None,
         "MAPE (%)": None,
+        "R²": None,
     }
 
     if not os.path.exists(file_path):
@@ -62,9 +64,12 @@ def parse_metrics(file_path: str):
                 metrics["MAE"] = safe_float(line.split(":", 1)[1])
             elif line.startswith("RMSE:"):
                 metrics["RMSE"] = safe_float(line.split(":", 1)[1])
-            elif line.startswith("MAPE:") or line.startswith("MAPE (>0.1):"):
-                if metrics["MAPE (%)"] is None:
-                    metrics["MAPE (%)"] = safe_float(line.split(":", 1)[1])
+            elif line.startswith("MAPE (>0.1):"):
+                metrics["MAPE (%)"] = safe_float(line.split(":", 1)[1])
+            elif line.startswith("MAPE:") and metrics["MAPE (%)"] is None:
+                metrics["MAPE (%)"] = safe_float(line.split(":", 1)[1])
+            elif line.startswith("R² Score:") or line.startswith("R2 Score:"):
+                metrics["R²"] = safe_float(line.split(":", 1)[1])
 
     return metrics
 
@@ -73,7 +78,7 @@ def parse_horizon_metrics(file_path: str):
     rows = []
 
     if not os.path.exists(file_path):
-        return pd.DataFrame(columns=["Minutes", "MAE", "RMSE"])
+        return pd.DataFrame(columns=["Minutes", "MAE", "RMSE", "MAPE", "WMAPE", "R2"])
 
     in_horizon_section = False
 
@@ -94,19 +99,105 @@ def parse_horizon_metrics(file_path: str):
                     continue
                 if set(stripped) == {"-"}:
                     continue
+                if "PER-HORIZON MAPE DETAILED BREAKDOWN" in stripped:
+                    break
+                if "COMPARISON WITH" in stripped:
+                    break
                 if "SENSOR-LEVEL STATISTICS" in stripped:
                     break
 
                 parts = stripped.split()
-                if len(parts) >= 6:
-                    try:
-                        rows.append({
-                            "Minutes": int(parts[1]),
-                            "MAE": float(parts[2]),
-                            "RMSE": float(parts[3]),
-                        })
-                    except ValueError:
-                        continue
+
+                try:
+                    horizon = int(parts[0])
+                    minutes = int(parts[1])
+                    mae = float(parts[2])
+                    rmse = float(parts[3])
+
+                    row = {
+                        "Horizon": horizon,
+                        "Minutes": minutes,
+                        "MAE": mae,
+                        "RMSE": rmse,
+                        "MAPE": None,
+                        "WMAPE": None,
+                        "R2": None,
+                    }
+
+                    if len(parts) >= 7:
+                        # Report columns are:
+                        # Horizon, Minutes, MAE, RMSE, WMAPE, R², MAPE%
+                        # Therefore MAPE is the 7th value, not the 5th value.
+                        row["WMAPE"] = safe_float(parts[4])
+                        row["R2"] = safe_float(parts[5])
+                        row["MAPE"] = safe_float(parts[6])
+                    elif len(parts) >= 6:
+                        row["WMAPE"] = safe_float(parts[4])
+                        row["R2"] = safe_float(parts[5])
+
+                    rows.append(row)
+
+                except (ValueError, IndexError):
+                    continue
+
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        mape_df = parse_horizon_mape_details(file_path)
+
+        if not mape_df.empty:
+            df = df.drop(columns=["MAPE"], errors="ignore")
+            df = df.merge(
+                mape_df[["Minutes", "MAPE"]],
+                on="Minutes",
+                how="left",
+            )
+
+    return df
+
+
+def parse_horizon_mape_details(file_path: str):
+    rows = []
+
+    if not os.path.exists(file_path):
+        return pd.DataFrame(columns=["Minutes", "MAPE", "MAPE_masked", "Coverage"])
+
+    in_mape_section = False
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.rstrip("\n")
+
+            if "PER-HORIZON MAPE DETAILED BREAKDOWN" in line:
+                in_mape_section = True
+                continue
+
+            if in_mape_section:
+                stripped = line.strip()
+
+                if not stripped:
+                    continue
+                if stripped.startswith("Horizon"):
+                    continue
+                if set(stripped) == {"-"}:
+                    continue
+                if stripped.startswith("MAPE TYPES"):
+                    break
+                if "SENSOR-LEVEL STATISTICS" in stripped:
+                    break
+
+                parts = stripped.split()
+
+                try:
+                    rows.append({
+                        "Horizon": int(parts[0]),
+                        "Minutes": int(parts[1]),
+                        "MAPE": safe_float(parts[2]),
+                        "MAPE_masked": safe_float(parts[3]),
+                        "Coverage": safe_float(parts[4]),
+                    })
+                except (ValueError, IndexError):
+                    continue
 
     return pd.DataFrame(rows)
 
@@ -141,6 +232,12 @@ def load_comparison_table():
             multihop["MAPE (%)"],
             PAPER_RESULTS["MAPE (%)"],
         ],
+        "R²": [
+            transformer["R²"],
+            st_model["R²"],
+            multihop["R²"],
+            PAPER_RESULTS["R²"],
+        ],
     })
 
 
@@ -150,10 +247,15 @@ def render_comparison_summary():
     df = load_comparison_table()
     display_df = df.copy()
 
-    for col in ["MAE", "RMSE", "MAPE (%)"]:
-        display_df[col] = display_df[col].map(
-            lambda x: f"{x:.2f}" if pd.notnull(x) else "-"
-        )
+    for col in ["MAE", "RMSE", "MAPE (%)", "R²"]:
+        if col == "R²":
+            display_df[col] = display_df[col].map(
+                lambda x: f"{x:.3f}" if pd.notnull(x) else "-"
+            )
+        else:
+            display_df[col] = display_df[col].map(
+                lambda x: f"{x:.2f}" if pd.notnull(x) else "-"
+            )
 
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
@@ -174,6 +276,7 @@ def get_sources():
                 "MAE": PAPER_RESULTS["MAE"],
                 "RMSE": PAPER_RESULTS["RMSE"],
                 "MAPE (%)": PAPER_RESULTS["MAPE (%)"],
+                "R²": PAPER_RESULTS["R²"],
             },
             "-.",
             "D",
@@ -198,18 +301,24 @@ def get_cumulative_values(plot_df: pd.DataFrame, metrics: dict, metric_name: str
     if plot_df.empty:
         return None
 
-    if metric_name == "MAPE":
-        if "MAPE" in plot_df.columns:
-            y_values = plot_df["MAPE"].expanding().mean()
+    if metric_name not in plot_df.columns:
+        return None
+
+    values = plot_df[metric_name]
+
+    if values.isnull().all():
+        if metric_name == "MAPE":
+            final_value = metrics.get("MAPE (%)")
         else:
-            overall_mape = metrics.get("MAPE (%)")
-            if overall_mape is None:
-                return None
-            y_values = pd.Series([overall_mape] * len(plot_df))
-    else:
-        if metric_name not in plot_df.columns:
+            final_value = metrics.get(metric_name)
+
+        if final_value is None:
             return None
-        y_values = plot_df[metric_name].expanding().mean()
+
+        values = pd.Series([final_value] * len(plot_df), index=plot_df.index)
+
+    values = values.astype(float)
+    y_values = values.expanding().mean()
 
     if plot_df["Minutes"].iloc[-1] == 60:
         if metric_name == "MAPE":
@@ -253,18 +362,17 @@ def plot_metric_line(ax, metric_name, y_label, title, max_steps=None, current_mi
             label=label,
         )
 
-        if len(plot_df) > 0:
-            x_last = plot_df["Minutes"].iloc[-1]
-            y_last = y_values.iloc[-1]
+        x_last = plot_df["Minutes"].iloc[-1]
+        y_last = y_values.iloc[-1]
 
-            ax.text(
-                x_last,
-                y_last,
-                f"{y_last:.2f}",
-                fontsize=9,
-                ha="left",
-                va="bottom",
-            )
+        ax.text(
+            x_last,
+            y_last,
+            f"{y_last:.2f}",
+            fontsize=9,
+            ha="left",
+            va="bottom",
+        )
 
         handles.append(line)
         labels.append(label)
@@ -318,7 +426,7 @@ def render_model_comparison():
     st.write(format_line("RMSE", our_rmse, paper_rmse, rmse_diff))
     st.write(format_line("MAPE", our_mape, paper_mape, mape_diff, True))
 
-    st.caption("Difference is calculated as (ST-Transformer Multi-Hop - MTESformer (Paper)).")
+    st.caption("Difference is calculated as (ST-Transformer Multi-Hop - MTESformer Paper).")
 
 
 def render_live_horizon_simulation():
@@ -332,7 +440,7 @@ def render_live_horizon_simulation():
 
     st.caption(
         "Each point shows cumulative average performance up to that horizon. "
-        "The final point matches the overall test performance."
+        "MAPE uses the parsed per-horizon MAPE values when available."
     )
 
     run = st.button("Run Live Evaluation Simulation", use_container_width=True)
@@ -345,8 +453,7 @@ def render_live_horizon_simulation():
 
     if run:
         for i, current_minutes in enumerate(target_minutes, start=1):
-
-            step = current_minutes // 5  # 對應 index
+            step = current_minutes // 5
 
             fig, axes = plt.subplots(1, 3, figsize=(16, 4.8))
 
@@ -385,15 +492,11 @@ def render_live_horizon_simulation():
             plt.close(fig)
 
             progress_bar.progress(i / len(target_minutes))
-
-            status_text.write(
-                f"Evaluation progressed to {current_minutes} minutes"
-            )
+            status_text.write(f"Evaluation progressed to {current_minutes} minutes")
 
             time.sleep(0.5)
 
         st.success("Evaluation completed. Final metrics match the summary table.")
-
         render_model_comparison()
 
     else:
