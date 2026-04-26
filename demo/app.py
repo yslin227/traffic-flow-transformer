@@ -15,10 +15,19 @@ TRANSFORMER_FILE = os.path.join(PROJECT_ROOT, "results", "transformer_results_co
 ST_FILE = os.path.join(PROJECT_ROOT, "results", "results_metr_la_comprehensive.txt")
 MULTIHOP_FILE = os.path.join(PROJECT_ROOT, "results", "results_multihop_comprehensive.txt")
 
+IMAGE_OUTPUT_DIR = os.path.join(PROJECT_ROOT, "results", "images")
+
 st.set_page_config(page_title="Traffic Forecast Demo", layout="wide")
 
+COLOR_MAP = {
+    "Transformer": "#1f77b4",
+    "ST-Transformer": "#ff7f0e",
+    "Multi-Hop": "#2ca02c",
+    "MTESformer (SOTA)": "#d62728",
+}
+
 PAPER_RESULTS = {
-    "Model": "MTESformer (Paper)",
+    "Model": "MTESformer (SOTA)",
     "MAE": 3.37,
     "RMSE": 7.14,
     "MAPE (%)": 9.62,
@@ -74,88 +83,6 @@ def parse_metrics(file_path: str):
     return metrics
 
 
-def parse_horizon_metrics(file_path: str):
-    rows = []
-
-    if not os.path.exists(file_path):
-        return pd.DataFrame(columns=["Minutes", "MAE", "RMSE", "MAPE", "WMAPE", "R2"])
-
-    in_horizon_section = False
-
-    with open(file_path, "r", encoding="utf-8") as f:
-        for raw_line in f:
-            line = raw_line.rstrip("\n")
-
-            if "PER-HORIZON PERFORMANCE BREAKDOWN" in line:
-                in_horizon_section = True
-                continue
-
-            if in_horizon_section:
-                stripped = line.strip()
-
-                if not stripped:
-                    continue
-                if stripped.startswith("Horizon"):
-                    continue
-                if set(stripped) == {"-"}:
-                    continue
-                if "PER-HORIZON MAPE DETAILED BREAKDOWN" in stripped:
-                    break
-                if "COMPARISON WITH" in stripped:
-                    break
-                if "SENSOR-LEVEL STATISTICS" in stripped:
-                    break
-
-                parts = stripped.split()
-
-                try:
-                    horizon = int(parts[0])
-                    minutes = int(parts[1])
-                    mae = float(parts[2])
-                    rmse = float(parts[3])
-
-                    row = {
-                        "Horizon": horizon,
-                        "Minutes": minutes,
-                        "MAE": mae,
-                        "RMSE": rmse,
-                        "MAPE": None,
-                        "WMAPE": None,
-                        "R2": None,
-                    }
-
-                    if len(parts) >= 7:
-                        # Report columns are:
-                        # Horizon, Minutes, MAE, RMSE, WMAPE, R², MAPE%
-                        # Therefore MAPE is the 7th value, not the 5th value.
-                        row["WMAPE"] = safe_float(parts[4])
-                        row["R2"] = safe_float(parts[5])
-                        row["MAPE"] = safe_float(parts[6])
-                    elif len(parts) >= 6:
-                        row["WMAPE"] = safe_float(parts[4])
-                        row["R2"] = safe_float(parts[5])
-
-                    rows.append(row)
-
-                except (ValueError, IndexError):
-                    continue
-
-    df = pd.DataFrame(rows)
-
-    if not df.empty:
-        mape_df = parse_horizon_mape_details(file_path)
-
-        if not mape_df.empty:
-            df = df.drop(columns=["MAPE"], errors="ignore")
-            df = df.merge(
-                mape_df[["Minutes", "MAPE"]],
-                on="Minutes",
-                how="left",
-            )
-
-    return df
-
-
 def parse_horizon_mape_details(file_path: str):
     rows = []
 
@@ -202,6 +129,80 @@ def parse_horizon_mape_details(file_path: str):
     return pd.DataFrame(rows)
 
 
+def parse_horizon_metrics(file_path: str):
+    rows = []
+
+    if not os.path.exists(file_path):
+        return pd.DataFrame(columns=["Minutes", "MAE", "RMSE", "MAPE", "WMAPE", "R2"])
+
+    in_horizon_section = False
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        for raw_line in f:
+            line = raw_line.rstrip("\n")
+
+            if "PER-HORIZON PERFORMANCE BREAKDOWN" in line:
+                in_horizon_section = True
+                continue
+
+            if in_horizon_section:
+                stripped = line.strip()
+
+                if not stripped:
+                    continue
+                if stripped.startswith("Horizon"):
+                    continue
+                if set(stripped) == {"-"}:
+                    continue
+                if "PER-HORIZON MAPE DETAILED BREAKDOWN" in stripped:
+                    break
+                if "COMPARISON WITH" in stripped:
+                    break
+                if "SENSOR-LEVEL STATISTICS" in stripped:
+                    break
+
+                parts = stripped.split()
+
+                try:
+                    row = {
+                        "Horizon": int(parts[0]),
+                        "Minutes": int(parts[1]),
+                        "MAE": float(parts[2]),
+                        "RMSE": float(parts[3]),
+                        "MAPE": None,
+                        "WMAPE": None,
+                        "R2": None,
+                    }
+
+                    if len(parts) >= 7:
+                        row["WMAPE"] = safe_float(parts[4])
+                        row["R2"] = safe_float(parts[5])
+                        row["MAPE"] = safe_float(parts[6])
+                    elif len(parts) >= 6:
+                        row["WMAPE"] = safe_float(parts[4])
+                        row["R2"] = safe_float(parts[5])
+
+                    rows.append(row)
+
+                except (ValueError, IndexError):
+                    continue
+
+    df = pd.DataFrame(rows)
+
+    if not df.empty:
+        mape_df = parse_horizon_mape_details(file_path)
+
+        if not mape_df.empty:
+            df = df.drop(columns=["MAPE"], errors="ignore")
+            df = df.merge(
+                mape_df[["Minutes", "MAPE"]],
+                on="Minutes",
+                how="left",
+            )
+
+    return df
+
+
 def load_comparison_table():
     transformer = parse_metrics(TRANSFORMER_FILE)
     st_model = parse_metrics(ST_FILE)
@@ -209,7 +210,7 @@ def load_comparison_table():
 
     return pd.DataFrame({
         "Model": [
-            "Transformer (Benchmark)",
+            "Transformer (Baseline)",
             "ST-Transformer (Advanced)",
             "ST-Transformer Multi-Hop (Advanced)",
             PAPER_RESULTS["Model"],
@@ -270,7 +271,7 @@ def get_sources():
         ("ST-Transformer", parse_horizon_metrics(ST_FILE), st_model, "--", "s"),
         ("Multi-Hop", parse_horizon_metrics(MULTIHOP_FILE), multihop, ":", "^"),
         (
-            "MTESformer (Paper)",
+            "MTESformer (SOTA)",
             PAPER_RESULTS["Horizon"],
             {
                 "MAE": PAPER_RESULTS["MAE"],
@@ -340,7 +341,7 @@ def plot_metric_line(ax, metric_name, y_label, title, max_steps=None, current_mi
         if df.empty:
             continue
 
-        if label == "MTESformer (Paper)" and current_minutes is not None:
+        if label == "MTESformer (SOTA)" and current_minutes is not None:
             plot_df = filter_paper_points_by_current_minute(df, current_minutes)
         else:
             plot_df = df.iloc[:min(len(df), max_steps)] if max_steps else df
@@ -360,6 +361,7 @@ def plot_metric_line(ax, metric_name, y_label, title, max_steps=None, current_mi
             marker=marker,
             alpha=0.65,
             label=label,
+            color=COLOR_MAP.get(label, None),
         )
 
         x_last = plot_df["Minutes"].iloc[-1]
@@ -387,6 +389,169 @@ def plot_metric_line(ax, metric_name, y_label, title, max_steps=None, current_mi
     return handles, labels
 
 
+def save_final_demo_images():
+    output_dir = IMAGE_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    final_minutes = 60
+    final_step = final_minutes // 5
+
+    for metric_name, y_label, title, filename in [
+        ("MAE", "MAE", "Cumulative MAE", "0.MAE_All.jpg"),
+        ("RMSE", "RMSE", "Cumulative RMSE", "0.RMSE_All.jpg"),
+        ("MAPE", "MAPE (%)", "Cumulative MAPE", "0.MAPE_All.jpg"),
+    ]:
+        fig, ax = plt.subplots(figsize=(6, 4.8))
+
+        handles, labels = plot_metric_line(
+            ax,
+            metric_name,
+            y_label,
+            title,
+            max_steps=final_step,
+            current_minutes=final_minutes,
+        )
+
+        if handles and labels:
+            fig.legend(
+                handles,
+                labels,
+                loc="lower center",
+                ncol=4,
+                bbox_to_anchor=(0.5, -0.02),
+            )
+
+        fig.tight_layout(rect=[0, 0.08, 1, 1])
+
+        save_path = os.path.join(output_dir, filename)
+        fig.savefig(save_path, dpi=300, bbox_inches="tight", format="jpg")
+
+        plt.close(fig)
+
+
+def get_pair_sources(target_model_name: str):
+    sources = get_sources()
+
+    pair_sources = []
+
+    for label, df, metrics, linestyle, marker in sources:
+        if label == target_model_name:
+            pair_sources.append((label, df, metrics, linestyle, marker))
+
+    for label, df, metrics, linestyle, marker in sources:
+        if label == "MTESformer (SOTA)":
+            pair_sources.append((label, df, metrics, linestyle, marker))
+
+    return pair_sources
+
+
+def plot_metric_line_pair(ax, metric_name, y_label, title, target_model_name, max_steps=None, current_minutes=None):
+    handles = []
+    labels = []
+
+    for label, df, metrics, linestyle, marker in get_pair_sources(target_model_name):
+        if df.empty:
+            continue
+
+        if label == "MTESformer (SOTA)" and current_minutes is not None:
+            plot_df = filter_paper_points_by_current_minute(df, current_minutes)
+        else:
+            plot_df = df.iloc[:min(len(df), max_steps)] if max_steps else df
+
+        if plot_df.empty:
+            continue
+
+        y_values = get_cumulative_values(plot_df, metrics, metric_name)
+
+        if y_values is None:
+            continue
+
+        line, = ax.plot(
+            plot_df["Minutes"],
+            y_values,
+            linestyle=linestyle,
+            marker=marker,
+            alpha=0.65,
+            label=label,
+            color=COLOR_MAP.get(label, None),
+        )
+
+        x_last = plot_df["Minutes"].iloc[-1]
+        y_last = y_values.iloc[-1]
+
+        ax.text(
+            x_last,
+            y_last,
+            f"{y_last:.2f}",
+            fontsize=9,
+            ha="left",
+            va="bottom",
+        )
+
+        handles.append(line)
+        labels.append(label)
+
+    ax.set_xlabel("Prediction Horizon (Minutes)")
+    ax.set_ylabel(y_label)
+    ax.set_title(title)
+    ax.set_xlim(0, 62)
+    ax.set_xticks([10, 20, 30, 40, 50, 60])
+    ax.grid(True)
+
+    return handles, labels
+
+
+def save_pair_comparison_images():
+    output_dir = IMAGE_OUTPUT_DIR
+    os.makedirs(output_dir, exist_ok=True)
+
+    final_minutes = 60
+    final_step = final_minutes // 5
+
+    comparison_targets = [
+        ("Transformer", "Transformer_vs_SOTA", "1."),
+        ("ST-Transformer", "ST_Transformer_vs_SOTA", "2."),
+        ("Multi-Hop", "Multi_Hop_vs_SOTA", "3."),
+    ]
+
+    for target_model_name, file_tag, prefix in comparison_targets:
+        for metric_name, y_label, title_prefix in [
+            ("MAE", "MAE", "Cumulative MAE"),
+            ("RMSE", "RMSE", "Cumulative RMSE"),
+            ("MAPE", "MAPE (%)", "Cumulative MAPE"),
+        ]:
+            fig, ax = plt.subplots(figsize=(6, 4.8))
+
+            handles, labels = plot_metric_line_pair(
+                ax,
+                metric_name,
+                y_label,
+                f"{title_prefix}: {target_model_name} vs SOTA",
+                target_model_name,
+                max_steps=final_step,
+                current_minutes=final_minutes,
+            )
+
+            if handles and labels:
+                fig.legend(
+                    handles,
+                    labels,
+                    loc="lower center",
+                    ncol=2,
+                    bbox_to_anchor=(0.5, -0.02),
+                )
+
+            fig.tight_layout(rect=[0, 0.08, 1, 1])
+
+            save_path = os.path.join(
+                output_dir,
+                f"{prefix}{metric_name}_{file_tag}.jpg"
+            )
+
+            fig.savefig(save_path, dpi=300, bbox_inches="tight", format="jpg")
+            plt.close(fig)
+
+
 def render_model_comparison():
     multihop = parse_metrics(MULTIHOP_FILE)
 
@@ -394,39 +559,39 @@ def render_model_comparison():
     our_rmse = multihop["RMSE"]
     our_mape = multihop["MAPE (%)"]
 
-    paper_mae = PAPER_RESULTS["MAE"]
-    paper_rmse = PAPER_RESULTS["RMSE"]
-    paper_mape = PAPER_RESULTS["MAPE (%)"]
+    sota_mae = PAPER_RESULTS["MAE"]
+    sota_rmse = PAPER_RESULTS["RMSE"]
+    sota_mape = PAPER_RESULTS["MAPE (%)"]
 
-    def calc_diff(our, paper):
-        if our is None or paper is None:
+    def calc_diff(our, sota):
+        if our is None or sota is None:
             return None
-        return our - paper
+        return our - sota
 
-    mae_diff = calc_diff(our_mae, paper_mae)
-    rmse_diff = calc_diff(our_rmse, paper_rmse)
-    mape_diff = calc_diff(our_mape, paper_mape)
+    mae_diff = calc_diff(our_mae, sota_mae)
+    rmse_diff = calc_diff(our_rmse, sota_rmse)
+    mape_diff = calc_diff(our_mape, sota_mape)
 
     st.divider()
     st.subheader("Final Model Comparison")
 
-    st.markdown("**ST-Transformer Multi-Hop (Advanced) vs MTESformer (Paper)**")
+    st.markdown("**ST-Transformer Multi-Hop (Advanced) vs MTESformer (SOTA)**")
 
-    def format_line(name, our, paper, diff, is_percent=False):
-        if our is None or paper is None:
+    def format_line(name, our, sota, diff, is_percent=False):
+        if our is None or sota is None:
             return f"{name}: -"
 
         sign = "+" if diff > 0 else ""
 
         if is_percent:
-            return f"{name}: {our:.2f}% vs {paper:.2f}%  ({sign}{diff:.2f}%)"
-        return f"{name}: {our:.2f} vs {paper:.2f}  ({sign}{diff:.2f})"
+            return f"{name}: {our:.2f}% vs {sota:.2f}%  ({sign}{diff:.2f}%)"
+        return f"{name}: {our:.2f} vs {sota:.2f}  ({sign}{diff:.2f})"
 
-    st.write(format_line("MAE", our_mae, paper_mae, mae_diff))
-    st.write(format_line("RMSE", our_rmse, paper_rmse, rmse_diff))
-    st.write(format_line("MAPE", our_mape, paper_mape, mape_diff, True))
+    st.write(format_line("MAE", our_mae, sota_mae, mae_diff))
+    st.write(format_line("RMSE", our_rmse, sota_rmse, rmse_diff))
+    st.write(format_line("MAPE", our_mape, sota_mape, mape_diff, True))
 
-    st.caption("Difference is calculated as (ST-Transformer Multi-Hop - MTESformer Paper).")
+    st.caption("Difference is calculated as (ST-Transformer Multi-Hop - MTESformer SOTA).")
 
 
 def render_live_horizon_simulation():
@@ -436,11 +601,6 @@ def render_live_horizon_simulation():
         "This simulation shows the evaluation process step-by-step. "
         "As more prediction horizons are evaluated, the curves gradually converge "
         "to the final average metrics shown in the summary table."
-    )
-
-    st.caption(
-        "Each point shows cumulative average performance up to that horizon. "
-        "MAPE uses the parsed per-horizon MAPE values when available."
     )
 
     run = st.button("Run Live Evaluation Simulation", use_container_width=True)
@@ -496,7 +656,11 @@ def render_live_horizon_simulation():
 
             time.sleep(0.5)
 
+        save_final_demo_images()
+        save_pair_comparison_images()
+
         st.success("Evaluation completed. Final metrics match the summary table.")
+
         render_model_comparison()
 
     else:
@@ -524,10 +688,10 @@ with left_col:
         """
 #### Models included:
 
-- Transformer (Benchmark)  
+- Transformer (Baseline)  
 - ST-Transformer (Advanced)  
 - ST-Transformer Multi-Hop (Advanced)  
-- MTESformer (Paper)
+- MTESformer (SOTA)
 """
     )
 
