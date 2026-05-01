@@ -21,12 +21,10 @@ checkpoints/
 *.pth
 
 # Large raw data
-data/*.h5
-data/*.pkl
-data/*.csv
-data/*.txt
+data/*
+!data/
+!data/download.txt
 
 # Optional logs
 results/*.log
 .vscode/
-data/

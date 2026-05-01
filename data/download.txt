@@ -1,0 +1,8 @@
+Dataset Download Link:
+
+https://drive.google.com/drive/u/2/folders/1yB7wwx6XqPiZHeYYpOtOv--M1DwIiyTE
+
+Instructions:
+1. Download the dataset from the link above.
+2. Extract the files if needed.
+3. Put all dataset files into the data/ folder.
