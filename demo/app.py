@@ -424,7 +424,7 @@ def save_final_demo_images():
         fig.tight_layout(rect=[0, 0.08, 1, 1])
 
         save_path = os.path.join(output_dir, filename)
-        fig.savefig(save_path, dpi=300, bbox_inches="tight", format="jpg")
+        # fig.savefig(save_path, dpi=300, bbox_inches="tight", format="jpg")
 
         plt.close(fig)
 
