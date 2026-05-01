@@ -656,8 +656,8 @@ def render_live_horizon_simulation():
 
             time.sleep(0.5)
 
-        save_final_demo_images()
-        save_pair_comparison_images()
+        # save_final_demo_images()
+        # save_pair_comparison_images()
 
         st.success("Evaluation completed. Final metrics match the summary table.")
 
